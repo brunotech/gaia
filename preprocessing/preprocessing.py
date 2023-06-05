@@ -47,18 +47,17 @@ def normalize(s):
 
 
 def get_json_path(dataset_name, base_dir, data_org, task):
-    dataset_id = dataset_name[len(data_org + "/") :]
+    dataset_id = dataset_name[len(f"{data_org}/"):]
     dest_dir = base_dir + data_org + "-" + task + "/"
     return dest_dir + dataset_id + ".jsonl"
 
 
 def get_datasets_with_prefix(prefix, use_auth_token=None, data_org="bigscience-data"):
-    datasets = [
+    return [
         ds_info.id
         for ds_info in HfApi().list_datasets(use_auth_token=use_auth_token)
         if (ds_info.id.startswith(data_org) and prefix in ds_info.id)
     ]
-    return datasets
 
 
 def constuct_doc_id(dataset_name, datapoint_id):
@@ -66,7 +65,7 @@ def constuct_doc_id(dataset_name, datapoint_id):
     Sample doc id format:s
     bigscience-data/roots_zh_wikinews/12345?seg=para_1_2&seg_id=20
     """
-    return dataset_name + "/" + str(datapoint_id)
+    return f"{dataset_name}/{str(datapoint_id)}"
 
 
 def find_whitespace(text):
@@ -141,14 +140,14 @@ def process_dataset_preprocessing(
                 "language": "en",
                 "meta": meta,
                 "segmentations": {
-                    "para_{}_{}".format(passage_tokens, overlap_tokens): segmentation
+                    f"para_{passage_tokens}_{overlap_tokens}": segmentation
                 },
             }
 
             try:
                 writer.write(mongo_doc)
             except TypeError as e:
-                print("Type error: {}".format(e), mongo_doc)
+                print(f"Type error: {e}", mongo_doc)
 
     print("Finished processing", dataset_name)
 
@@ -162,23 +161,23 @@ def process_dataset_pyserini(
     pyserini_filename = get_json_path(dataset_name, base_dir, data_org, "pyserini")
     print("Processing", dataset_name, "to be saved under", pyserini_filename)
 
-    with jsonlines.open(preprocessed_filename, mode="r") as reader, jsonlines.open(
-        pyserini_filename, mode="w"
-    ) as writer:
+    with (jsonlines.open(preprocessed_filename, mode="r") as reader, jsonlines.open(
+            pyserini_filename, mode="w"
+        ) as writer):
         for document in tqdm(reader):
             for i, segment in enumerate(document["segmentations"][segmentation]):
                 contents = extract_segment(document["text"], segment)
                 if normalize:
                     contents = normalize(contents)
                 pyserini_sample = {
-                    "id": document["_id"] + "?seg={}&seg_id={}".format(segmentation, i),
+                    "id": document["_id"] + f"?seg={segmentation}&seg_id={i}",
                     "contents": contents,
                     "meta": document["meta"],
                 }
                 try:
                     writer.write(pyserini_sample)
                 except TypeError as e:
-                    print("Type error: {}".format(e), pyserini_sample)
+                    print(f"Type error: {e}", pyserini_sample)
 
     print("Finished processing", dataset_name)
 
@@ -217,9 +216,7 @@ def process_dataset_laion_dedup(
         try:
             for iter_lines, document in pbar:
                 pbar.set_description(
-                    "Iter lines {}. Total lines {}. Cache hit rate {}.".format(
-                        iter_lines, len(processed), 100 * (hits / (iter_lines + 1))
-                    )
+                    f"Iter lines {iter_lines}. Total lines {len(processed)}. Cache hit rate {100 * (hits / (iter_lines + 1))}."
                 )
                 if len(lines) >= SPLIT_SIZE:
                     writer.write_all(lines)
@@ -237,9 +234,7 @@ def process_dataset_laion_dedup(
                 processed.add(_id)
 
                 normalized_text = document["NORMALIZED_TEXT"]
-                line = {}
-                line["id"] = line_id
-                line["contents"] = normalized_text
+                line = {"id": line_id, "contents": normalized_text}
                 line_id += 1
 
                 dup_cursor = looking_glass.find({"NORMALIZED_TEXT": normalized_text})
@@ -273,7 +268,7 @@ def main(args):
     datasets = get_datasets_with_prefix(
         prefix=args.prefix, use_auth_token=HUGGINGFACE_TOKEN
     )
-    print("Processing {} datasets:".format(len(datasets)))
+    print(f"Processing {len(datasets)} datasets:")
     pprint(datasets)
 
     if args.task == "preprocessing":
@@ -295,8 +290,7 @@ def main(args):
         raise ValueError("Unrecognized task!")
 
     workers = len(datasets)
-    if workers > 256:
-        workers = 256
+    workers = min(workers, 256)
     print("Number of workers:", workers)
     pool = Pool(workers)
     pool.map(process_dataset, datasets)

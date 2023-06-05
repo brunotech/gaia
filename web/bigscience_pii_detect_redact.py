@@ -48,6 +48,7 @@ Languages assumed are ["ar", "as", "bn", "ca", "en", "es", "eu", "fr", "gu", "hi
 """
 
 
+
 # @title Define highest risk PII. TODO: License plate
 # NUMBER removed last minute due to false positives. See https://huggingface.slack.com/archives/C0307KE5UNT/p1647011702716159
 high_risk_tags = {"KEY", "EMAIL", "USER", "IP_ADDRESS"}  # , 'NUMBER', "ID"}
@@ -137,24 +138,22 @@ user_regex = regex.compile(
 mst_regexes = {}
 for tag in high_risk_tags:
     # print(tag)
-    if tag == "ID":
+    if tag == "EMAIL":
+        mst_regexes["EMAIL"] = email_regex
+    elif tag == "ID":
         mst_regexes["ID"] = id_regex
-    elif tag == "KEY":
-        mst_regexes["KEY"] = key_regex
+    elif tag == "IP_ADDRESS":
+        mst_regexes["IP_ADDRESS"] = ip_regex
     elif tag == "IPv4":
         mst_regexes["IPv4"] = ipv4_regex
     elif tag == "IPv6":
         mst_regexes["IPv6"] = ipv6_regex
-    elif tag == "IP_ADDRESS":
-        mst_regexes["IP_ADDRESS"] = ip_regex
-    elif tag == "EMAIL":
-        mst_regexes["EMAIL"] = email_regex
+    elif tag == "KEY":
+        mst_regexes["KEY"] = key_regex
     elif tag == "USER":
         mst_regexes["USER"] = user_regex
-    #  elif tag == 'NUMBER':
-    #    mst_regexes['NUMBER'] = phone_regex
     else:
-        sys.stderr.write("Dont have tag regex pattern for %s =(" % tag)
+        sys.stderr.write(f"Dont have tag regex pattern for {tag} =(")
 
 # print("MST regexes under examination are:")
 # for tag, regx in mst_regexes.items():
@@ -175,11 +174,7 @@ def ip_has_digit(matched_str):
 
 
 def matches_date_pattern(matched_str):
-    # Screen out date false positives
-    for year_regex in year_patterns:
-        if year_regex.match(matched_str):
-            return True
-    return False
+    return any(year_regex.match(matched_str) for year_regex in year_patterns)
 
 
 def is_website(matched_str):
@@ -204,10 +199,7 @@ def detect_pii(text, lang, tag_types):
                     # print(text)
                     # print(match.groups())
                 matched_str = match.groups()
-                # print(matched_str)
-                # Why does this happen?
-                matched_str = matched_str[0]
-                if matched_str:
+                if matched_str := matched_str[0]:
                     if tag in ["IP_ADDRESS"]:
                         # Filter out false positive IPs
                         if not ip_has_digit(matched_str):
@@ -235,7 +227,7 @@ def redact_pii(text, matches):
     for match in matches:
         matched_str = match[0]
         tag = match[3]
-        redact_tag = "PI:" + tag
+        redact_tag = f"PI:{tag}"
         redacted_str = redacted_str.replace(matched_str, redact_tag)
         # Create the "metadata" as all of the information we had before redaction
         metadata += [(match)]
@@ -290,18 +282,16 @@ def run_pii_batch(exs, lang):
             # !!! REDACTION HAPPENS HERE !!!
             redacted_str, metadata = redact_pii(text, matches)
             regex_metadata.append(repr(metadata))
-            old_text.append(text)
             new_text.append(redacted_str)
             modified.append(True)
         else:
             regex_metadata.append("")
-            old_text.append(text)
             new_text.append(text)
             modified.append(False)
-    result = {
+        old_text.append(text)
+    return {
         "regex_metadata": regex_metadata,
         "old_text": old_text,
         "text": new_text,
         "modified": modified,
     }
-    return result
