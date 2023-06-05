@@ -45,10 +45,7 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
             highlight_terms = set()
         for hit in hits:
             raw = json.loads(hit.raw)
-            hits_entry = {}
-            hits_entry["docid"] = hit.docid
-            hits_entry["score"] = hit.score
-            hits_entry["text"] = raw["contents"]
+            hits_entry = {"docid": hit.docid, "score": hit.score, "text": raw["contents"]}
             if "meta" in raw:
                 hits_entry["meta"] = raw["meta"]
             piis = run_pii(hits_entry["text"], None)
@@ -60,7 +57,7 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
                 term_rewritten = set(self.server.analyzer[corpus].analyze(term))
                 if len(query_terms & term_rewritten) > 0:
                     highlight_terms.add(term)
-        logging.info("Highlight terms: {}".format(str(highlight_terms)))
+        logging.info(f"Highlight terms: {str(highlight_terms)}")
         return hits_entries, highlight_terms
 
     def do_GET(self):
@@ -68,15 +65,13 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
             "GET request,\nPath: %s\nHeaders:\n%s\n", str(self.path), str(self.headers)
         )
         self._set_response()
-        self.wfile.write("GET request for {}".format(self.path).encode("utf-8"))
+        self.wfile.write(f"GET request for {self.path}".encode("utf-8"))
 
     def do_POST(self):
         content_length = int(self.headers["Content-Length"])
         post_data = self.rfile.read(content_length).decode("utf-8")
         logging.info(
-            "POST request,\nPath: {}\nHeaders:\n{}\nBody:\n{}\n".format(
-                self.path, self.headers, post_data
-            )
+            f"POST request,\nPath: {self.path}\nHeaders:\n{self.headers}\nBody:\n{post_data}\n"
         )
 
         post_data = json.loads(post_data)
@@ -95,7 +90,7 @@ class PyseriniHTTPRequestHandler(BaseHTTPRequestHandler):
             else int(post_data["k"])
         )
 
-        logging.info("Query: {}".format(query))
+        logging.info(f"Query: {query}")
 
         results = None
         query_terms = set(self.server.analyzer[corpus].analyze(query))
@@ -115,7 +110,7 @@ def run(server_address, port):
     )
 
     sa = httpd.socket.getsockname()
-    logging.info("Starting httpd on {} port {} ...".format(sa[0], sa[1]))
+    logging.info(f"Starting httpd on {sa[0]} port {sa[1]} ...")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
